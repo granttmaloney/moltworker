@@ -164,7 +164,7 @@ if (process.env.OPENCLAW_GATEWAY_TOKEN) {
     config.gateway.auth.token = process.env.OPENCLAW_GATEWAY_TOKEN;
 }
 
-if (process.env.OPENCLAW_DEV_MODE === 'true') {
+if (process.env.OPENCLAW_DEV_MODE === 'true' || !process.env.OPENCLAW_GATEWAY_TOKEN) {
     config.gateway.controlUi = config.gateway.controlUi || {};
     config.gateway.controlUi.allowInsecureAuth = true;
 }
@@ -173,6 +173,28 @@ if (process.env.OPENCLAW_DEV_MODE === 'true') {
 // ANTHROPIC_BASE_URL is picked up natively by the Anthropic SDK,
 // so we don't need to patch the provider config. Writing a provider
 // entry without a models array breaks OpenClaw's config validation.
+
+// OpenAI-compatible provider override (e.g. OpenRouter)
+// When OPENAI_BASE_URL is set, configure a custom OpenAI-compatible provider
+// and set it as the default model. Works with any OpenAI-compatible API.
+if (process.env.OPENAI_API_KEY && process.env.OPENAI_BASE_URL) {
+    const baseUrl = process.env.OPENAI_BASE_URL.replace(/\/+$/, '');
+    const modelId = process.env.OPENAI_MODEL || 'minimax/minimax-m2.5';
+    const providerName = 'openai-compat';
+
+    config.models = config.models || {};
+    config.models.providers = config.models.providers || {};
+    config.models.providers[providerName] = {
+        baseUrl: baseUrl,
+        apiKey: process.env.OPENAI_API_KEY,
+        api: 'openai-completions',
+        models: [{ id: modelId, name: modelId, contextWindow: 131072, maxTokens: 8192 }],
+    };
+    config.agents = config.agents || {};
+    config.agents.defaults = config.agents.defaults || {};
+    config.agents.defaults.model = { primary: providerName + '/' + modelId };
+    console.log('OpenAI-compatible provider override: model=' + modelId + ' via ' + baseUrl);
+}
 
 // AI Gateway model override (CF_AI_GATEWAY_MODEL=provider/model-id)
 // Adds a provider entry for any AI Gateway provider and sets it as default model.

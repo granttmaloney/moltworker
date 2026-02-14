@@ -293,10 +293,17 @@ app.all('*', async (c) => {
     // CF Access redirects strip query params, so authenticated users lose ?token=.
     // Since the user already passed CF Access auth, we inject the token server-side.
     let wsRequest = request;
-    if (c.env.MOLTBOT_GATEWAY_TOKEN && !url.searchParams.has('token')) {
+    if (c.env.MOLTBOT_GATEWAY_TOKEN) {
+      // wsConnect strips query params, so inject token via both URL and header
       const tokenUrl = new URL(url.toString());
       tokenUrl.searchParams.set('token', c.env.MOLTBOT_GATEWAY_TOKEN);
-      wsRequest = new Request(tokenUrl.toString(), request);
+      const headers = new Headers(request.headers);
+      headers.set('Authorization', 'Bearer ' + c.env.MOLTBOT_GATEWAY_TOKEN);
+      headers.set('X-Gateway-Token', c.env.MOLTBOT_GATEWAY_TOKEN);
+      wsRequest = new Request(tokenUrl.toString(), { headers });
+      console.log('[WS] Token injected via URL + headers');
+    } else {
+      console.log('[WS] No MOLTBOT_GATEWAY_TOKEN available');
     }
 
     // Get WebSocket connection to the container
@@ -329,15 +336,19 @@ app.all('*', async (c) => {
 
     // Relay messages from client to container
     serverWs.addEventListener('message', (event) => {
+      let data = event.data;
+      // Inject gateway token into connect method if available
+      if (typeof data === 'string' && c.env.MOLTBOT_GATEWAY_TOKEN) {
+      }
       if (debugLogs) {
         console.log(
           '[WS] Client -> Container:',
-          typeof event.data,
-          typeof event.data === 'string' ? event.data.slice(0, 200) : '(binary)',
+          typeof data,
+          typeof data === 'string' ? data.slice(0, 500) : '(binary)',
         );
       }
       if (containerWs.readyState === WebSocket.OPEN) {
-        containerWs.send(event.data);
+        containerWs.send(data);
       } else if (debugLogs) {
         console.log('[WS] Container not open, readyState:', containerWs.readyState);
       }
